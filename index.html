@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zalo授权登录</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <div class="auth-card">
+            <div class="logo">
+                <svg width="60" height="60" viewBox="0 0 60 60" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="30" cy="30" r="30" fill="#0068FF"/>
+                    <text x="30" y="40" font-family="Arial" font-size="24" font-weight="bold" fill="white" text-anchor="middle">Z</text>
+                </svg>
+            </div>
+            <h1>Zalo授权登录</h1>
+            <div id="status" class="status"></div>
+            <div id="loading" class="loading hidden">
+                <div class="spinner"></div>
+                <p>正在处理授权...</p>
+            </div>
+        </div>
+    </div>
+    <script src="auth.js"></script>
+</body>
+</html>
+
