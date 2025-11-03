@@ -19,9 +19,11 @@ const ZALO_CONFIG = {
     // 自动使用当前页面的完整URL作为回调地址，支持子路径和根路径部署
     redirectUri: getUrlParameter('redirect_uri') || window.location.origin + window.location.pathname,
     // Zalo OAuth授权地址
-    authUrl: 'https://oauth.zalo.me/v4/oa/permission',
+    // authUrl: 'https://oauth.zalo.me/v4/oa/permission',
+    authUrl: 'https://oauth.zaloapp.com/v4/permission',
     // Zalo Token交换地址
-    tokenUrl: 'https://oauth.zalo.me/v4/oa/access_token',
+    // tokenUrl: 'https://oauth.zalo.me/v4/oa/access_token',
+    tokenUrl: 'https://oauth.zaloapp.com/v4/access_token',
     // Zalo用户信息获取地址
     userInfoUrl: 'https://graph.zalo.me/v2.0/me',
     // Flutter回调标识（通过URL参数传递）
