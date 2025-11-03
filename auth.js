@@ -186,27 +186,28 @@ async function exchangeCodeForToken(code) {
     // 1. 如果中间页有自己的后端，通过后端API交换token
     // 2. 如果app_secret在前端（不推荐，安全性低），直接调用Zalo API
     
-    const tokenExchangeUrl = getUrlParameter('token_exchange_url');
+    const tok？enExchangeUrl = getUrlParameter('token_exchange_url');
     
-    if (tokenExchangeUrl) {
-        // 方案1：通过后端API交换token（推荐）
-        const response = await fetch(tokenExchangeUrl, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                code: code,
-                redirect_uri: ZALO_CONFIG.redirectUri
-            })
-        });
+    // if (tokenExchangeUrl) {
+    //     // 方案1：通过后端API交换token（推荐）
+    //     const response = await fetch(tokenExchangeUrl, {
+    //         method: 'POST',
+    //         headers: {
+    //             'Content-Type': 'application/json',
+    //         },
+    //         body: JSON.stringify({
+    //             code: code,
+    //             redirect_uri: ZALO_CONFIG.redirectUri
+    //         })
+    //     });
 
-        if (!response.ok) {
-            throw new Error(`Token交换失败：${response.statusText}`);
-        }
+    //     if (!response.ok) {
+    //         throw new Error(`Token交换失败：${response.statusText}`);
+    //     }
 
-        return await response.json();
-    } else if (ZALO_CONFIG.appSecret) {
+    //     return await response.json();
+    // } else 
+    if (ZALO_CONFIG.appSecret) {
         // 方案2：直接在前端调用（不推荐，仅用于测试）
         console.warn('警告：在前端直接使用app_secret是不安全的，仅用于测试环境');
         
