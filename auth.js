@@ -22,7 +22,7 @@ const ZALO_CONFIG = {
     // Zalo OAuth授权地址
     // authUrl: 'https://oauth.zalo.me/v4/oa/permission',
     authUrl: 'https://oauth.zaloapp.com/v4/permission',
-    // Zalo Token交换地址
+    // Zalo Token交换地址（注意：需要使用POST方法）
     // tokenUrl: 'https://oauth.zalo.me/v4/oa/access_token',
     tokenUrl: 'https://oauth.zaloapp.com/v4/access_token',
     // Zalo用户信息获取地址
@@ -186,52 +186,55 @@ async function exchangeCodeForToken(code) {
     // 1. 如果中间页有自己的后端，通过后端API交换token
     // 2. 如果app_secret在前端（不推荐，安全性低），直接调用Zalo API
     
-    // const tokenExchangeUrl = getUrlParameter('token_exchange_url');
+    const tokenExchangeUrl = getUrlParameter('token_exchange_url');
     
-    // if (tokenExchangeUrl) {
-    //     // 方案1：通过后端API交换token（推荐）
-    //     const response = await fetch(tokenExchangeUrl, {
-    //         method: 'POST',
-    //         headers: {
-    //             'Content-Type': 'application/json',
-    //         },
-    //         body: JSON.stringify({
-    //             code: code,
-    //             redirect_uri: ZALO_CONFIG.redirectUri
-    //         })
-    //     });
-
-    //     if (!response.ok) {
-    //         throw new Error(`Token交换失败：${response.statusText}`);
-    //     }
-
-    //     return await response.json();
-    // } else 
-        if (ZALO_CONFIG.appSecret) {
-        // 方案2：直接在前端调用（不推荐，仅用于测试）
-        console.warn('警告：在前端直接使用app_secret是不安全的，仅用于测试环境');
-        
-        const tokenParams = new URLSearchParams({
-            app_id: ZALO_CONFIG.appId,
-            app_secret: ZALO_CONFIG.appSecret,
-            code: code
-        });
-
-        const response = await fetch(`${ZALO_CONFIG.tokenUrl}?${tokenParams.toString()}`, {
-            method: 'GET',
+    if (tokenExchangeUrl) {
+        // 方案1：通过后端API交换token（推荐）
+        const response = await fetch(tokenExchangeUrl, {
+            method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-            }
+            },
+            body: JSON.stringify({
+                code: code,
+                redirect_uri: ZALO_CONFIG.redirectUri
+            })
         });
 
         if (!response.ok) {
             throw new Error(`Token交换失败：${response.statusText}`);
         }
 
+        return await response.json();
+    } else if (ZALO_CONFIG.appSecret) {
+        // 方案2：直接在前端调用（不推荐，仅用于测试）
+        console.warn('警告：在前端直接使用app_secret是不安全的，仅用于测试环境');
+        
+        // Zalo API需要使用POST方法，Content-Type为application/x-www-form-urlencoded
+        const tokenParams = new URLSearchParams({
+            app_id: ZALO_CONFIG.appId,
+            app_secret: ZALO_CONFIG.appSecret,
+            code: code,
+            grant_type: 'authorization_code'
+        });
+
+        const response = await fetch(ZALO_CONFIG.tokenUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: tokenParams.toString()
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Token交换失败：${response.status} ${response.statusText} - ${errorText}`);
+        }
+
         const data = await response.json();
         
         if (data.error) {
-            throw new Error(data.error_description || 'Token交换失败');
+            throw new Error(data.error_description || data.error || 'Token交换失败');
         }
 
         return data;
