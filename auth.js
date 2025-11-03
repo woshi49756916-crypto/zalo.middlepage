@@ -16,6 +16,7 @@ const ZALO_CONFIG = {
     // appSecret: getUrlParameter('app_secret') || '',
     appSecret: 'y6kCG08P3t0UQ0S16eJK',
     // 授权回调地址 - 需要与Zalo开发者平台配置的回调地址一致
+    // 自动使用当前页面的完整URL作为回调地址，支持子路径和根路径部署
     redirectUri: getUrlParameter('redirect_uri') || window.location.origin + window.location.pathname,
     // Zalo OAuth授权地址
     authUrl: 'https://oauth.zalo.me/v4/oa/permission',
@@ -333,9 +334,95 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // 监听来自Flutter的消息（可选，用于确认消息接收）
 window.addEventListener('message', (event) => {
+    // 处理来自zalo-redirct.html的回调消息
+    if (event.data && event.data.type === 'zalo_auth_callback' && event.data.url) {
+        try {
+            // 解析回调URL中的参数
+            const callbackUrl = new URL(event.data.url);
+            const code = callbackUrl.searchParams.get('code');
+            const state = callbackUrl.searchParams.get('state');
+            const error = callbackUrl.searchParams.get('error');
+            
+            // 如果有错误，显示错误信息
+            if (error) {
+                showStatus(`授权失败：${error}`, 'error');
+                setTimeout(() => {
+                    sendResultToFlutter({ error: error }, true);
+                }, 2000);
+                return;
+            }
+            
+            // 如果有授权码，处理授权回调
+            if (code) {
+                handleAuthCallbackWithCode(code, state);
+            }
+        } catch (err) {
+            console.error('处理Zalo回调消息失败:', err);
+        }
+    }
+    
+    // 处理来自Flutter的确认消息
     if (event.data && event.data.type === 'zalo_auth_confirm') {
         console.log('Flutter已确认接收到授权结果');
         window.close();
     }
 });
+
+// 使用授权码处理回调（从zalo-redirct.html接收）
+async function handleAuthCallbackWithCode(code, state) {
+    // 验证state
+    if (!state || !verifyState(state)) {
+        showStatus('授权验证失败：state不匹配', 'error');
+        setTimeout(() => {
+            sendResultToFlutter({ error: 'state_verification_failed' }, true);
+        }, 2000);
+        return;
+    }
+
+    // 交换access_token
+    try {
+        showStatus('正在获取访问令牌...', 'info');
+        const tokenData = await exchangeCodeForToken(code);
+        
+        if (!tokenData || !tokenData.access_token) {
+            throw new Error('无法获取access_token');
+        }
+
+        showStatus('正在获取用户信息...', 'info');
+        const userInfo = await getUserInfo(tokenData.access_token);
+        
+        if (!userInfo || !userInfo.id) {
+            throw new Error('无法获取用户信息');
+        }
+
+        // 准备返回数据
+        const result = {
+            access_token: tokenData.access_token,
+            user_id: userInfo.id.toString(),
+            expires_in: tokenData.expires_in,
+            refresh_token: tokenData.refresh_token || null,
+            user_info: {
+                id: userInfo.id,
+                name: userInfo.name,
+                birthday: userInfo.birthday || null,
+                gender: userInfo.gender || null,
+                picture: userInfo.picture?.data?.url || null
+            }
+        };
+
+        showStatus('授权成功！正在返回...', 'success');
+        
+        // 延迟一下让用户看到成功提示
+        setTimeout(() => {
+            sendResultToFlutter(result, false);
+        }, 1000);
+
+    } catch (error) {
+        console.error('授权流程错误：', error);
+        showStatus(`授权失败：${error.message}`, 'error');
+        setTimeout(() => {
+            sendResultToFlutter({ error: error.message }, true);
+        }, 2000);
+    }
+}
 

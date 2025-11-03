@@ -1,20 +1,40 @@
 <!doctype html>
-<html lang="en">
-
+<html lang="zh-CN">
 <head>
     <meta charset="utf-8">
-    <title>Zalo login</title>
-    <meta name="viewport"
-          content="width=device-width,minimum-scale=1.0,maximum-scale=1.0,user-scalable=no">
+    <meta name="viewport" content="width=device-width,minimum-scale=1.0,maximum-scale=1.0,user-scalable=no">
+    <title>Zalo授权回调</title>
+    <!-- 不加载任何外部脚本，只使用内联脚本（符合Zalo CSP策略） -->
 </head>
-
 <body>
+    <script>
+        // 使用原生JavaScript，不依赖任何外部库（符合Zalo CSP策略）
+        (function() {
+            'use strict';
+            
+            try {
+                // 将授权回调结果通过postMessage发送给父窗口
+                if (window.opener && !window.opener.closed) {
+                    var currentUrl = window.location.href;
+                    window.opener.postMessage({
+                        type: 'zalo_auth_callback',
+                        url: currentUrl,
+                        timestamp: Date.now()
+                    }, '*'); // 注意：生产环境应指定具体origin
+                }
+                
+                // 延迟关闭窗口，确保消息已发送
+                setTimeout(function() {
+                    window.close();
+                }, 100);
+            } catch (error) {
+                console.error('Zalo回调处理错误:', error);
+                // 如果postMessage失败，尝试直接关闭
+                setTimeout(function() {
+                    window.close();
+                }, 100);
+            }
+        })();
+    </script>
 </body>
-<script>
-    window.opener&&window.opener.postMessage(window.location.href, '*');
-    setTimeout(function() {
-        window.close()
-    },100)
-    
-</script>
 </html>
