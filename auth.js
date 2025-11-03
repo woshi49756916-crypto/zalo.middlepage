@@ -189,40 +189,43 @@ async function exchangeCodeForToken(code) {
     
     const tokenExchangeUrl = getUrlParameter('token_exchange_url');
     
-    if (tokenExchangeUrl) {
-        // 方案1：通过后端API交换token（推荐）
-        const response = await fetch(tokenExchangeUrl, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                code: code,
-                redirect_uri: ZALO_CONFIG.redirectUri
-            })
-        });
+    // if (tokenExchangeUrl) {
+    //     // 方案1：通过后端API交换token（推荐）
+    //     const response = await fetch(tokenExchangeUrl, {
+    //         method: 'POST',
+    //         headers: {
+    //             'Content-Type': 'application/json',
+    //         },
+    //         body: JSON.stringify({
+    //             code: code,
+    //             redirect_uri: ZALO_CONFIG.redirectUri
+    //         })
+    //     });
 
-        if (!response.ok) {
-            throw new Error(`Token交换失败：${response.statusText}`);
-        }
+    //     if (!response.ok) {
+    //         throw new Error(`Token交换失败：${response.statusText}`);
+    //     }
 
-        return await response.json();
-    } else if (ZALO_CONFIG.appSecret) {
+    //     return await response.json();
+    // } else 
+    if (ZALO_CONFIG.appSecret) {
         // 方案2：直接在前端调用（不推荐，仅用于测试）
         console.warn('警告：在前端直接使用app_secret是不安全的，仅用于测试环境');
         
-        // Zalo API需要使用POST方法，Content-Type为application/x-www-form-urlencoded
+        // Zalo API需要使用POST方法
+        // 重要：secret_key必须作为HTTP Header传递，而不是在请求体中
         const tokenParams = new URLSearchParams({
             app_id: ZALO_CONFIG.appId,
-            app_secret: ZALO_CONFIG.appSecret,
             code: code,
             grant_type: 'authorization_code'
+            // code_verifier: 'your_code_verifier'  // 可选，用于PKCE流程
         });
 
         const response = await fetch(ZALO_CONFIG.tokenUrl, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/x-www-form-urlencoded',
+                'secret_key': ZALO_CONFIG.appSecret  // secret_key作为HTTP Header
             },
             body: tokenParams.toString()
         });
