@@ -214,11 +214,22 @@ async function exchangeCodeForToken(code) {
         
         // Zalo API需要使用POST方法
         // 重要：secret_key必须作为HTTP Header传递，而不是在请求体中
+        // 注意：redirect_uri必须与授权请求时使用的完全一致
         const tokenParams = new URLSearchParams({
             app_id: ZALO_CONFIG.appId,
             code: code,
             grant_type: 'authorization_code'
+            // redirect_uri: ZALO_CONFIG.redirectUri,  // 如果需要，取消注释
             // code_verifier: 'your_code_verifier'  // 可选，用于PKCE流程
+        });
+
+        // 调试信息
+        console.log('Token交换请求参数:', {
+            url: ZALO_CONFIG.tokenUrl,
+            app_id: ZALO_CONFIG.appId,
+            code: code ? code.substring(0, 20) + '...' : '缺失',
+            redirect_uri: ZALO_CONFIG.redirectUri,
+            has_secret_key: !!ZALO_CONFIG.appSecret
         });
 
         const response = await fetch(ZALO_CONFIG.tokenUrl, {
@@ -232,15 +243,28 @@ async function exchangeCodeForToken(code) {
 
         if (!response.ok) {
             const errorText = await response.text();
+            console.error('Token交换HTTP错误:', {
+                status: response.status,
+                statusText: response.statusText,
+                error: errorText
+            });
             throw new Error(`Token交换失败：${response.status} ${response.statusText} - ${errorText}`);
         }
 
         const data = await response.json();
         
         if (data.error) {
+            console.error('Zalo API返回错误:', data);
+            
+            // 特殊处理 -14005 错误（授权码无效）
+            if (data.error === -14005 || data.error === '-14005') {
+                throw new Error('授权码无效或已过期，请重新进行授权。可能原因：1)授权码已使用 2)授权码已过期 3)redirect_uri不匹配');
+            }
+            
             throw new Error(data.error_description || data.error || 'Token交换失败');
         }
 
+        console.log('Token交换成功');
         return data;
     } else {
         throw new Error('缺少token交换配置，请提供token_exchange_url或app_secret');
