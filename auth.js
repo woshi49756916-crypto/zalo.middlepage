@@ -308,14 +308,14 @@ function fallbackToUrlScheme(result, isError) {
         window.location.href = callbackUrl;
         
         // 如果无法打开自定义scheme，关闭窗口
-        setTimeout(() => {
-            window.close();
-        }, 1000);
+        // setTimeout(() => {
+        //     window.close();
+        // }, 1000);
         
     } catch (error) {
         console.error('URL Scheme方案失败：', error);
         // 最后尝试直接关闭
-        window.close();
+        // window.close();
     }
 }
 
@@ -382,7 +382,7 @@ window.addEventListener('message', (event) => {
     // 处理来自Flutter的确认消息
     if (event.data && event.data.type === 'zalo_auth_confirm') {
         console.log('Flutter已确认接收到授权结果');
-        window.close();
+        // window.close();
     }
 });
 
