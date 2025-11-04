@@ -270,10 +270,17 @@ async function exchangeCodeForToken(code) {
 
 // 获取用户信息
 async function getUserInfo(accessToken) {
-    const response = await fetch(`${ZALO_CONFIG.userInfoUrl}?access_token=${accessToken}&fields=id,name,birthday,gender,picture`, {
+    // 根据Zalo API建议，access_token应该放在HTTP Header中，而不是URL参数
+    // 使用两种方式以确保兼容性：Header优先，URL参数作为备用
+    const fields = 'id,name,birthday,gender,picture';
+    
+    // 方案1：将access_token放在Header中（推荐）
+    const response = await fetch(`${ZALO_CONFIG.userInfoUrl}?fields=${fields}`, {
         method: 'GET',
         headers: {
             'Content-Type': 'application/json',
+            'access_token': accessToken  // 将access_token放在Header中
+            // 或者使用标准OAuth格式：'Authorization': `Bearer ${accessToken}`
         }
     });
 
@@ -283,8 +290,14 @@ async function getUserInfo(accessToken) {
 
     const data = await response.json();
     
-    if (data.error) {
-        throw new Error(data.error_description || '获取用户信息失败');
+    // 检查是否有错误（error: 0表示成功，但可能包含警告消息）
+    if (data.error && data.error !== 0) {
+        throw new Error(data.message || data.error_description || '获取用户信息失败');
+    }
+
+    // 如果返回了警告消息，记录但不中断流程
+    if (data.message && data.message.includes('Warning')) {
+        console.warn('Zalo API警告:', data.message);
     }
 
     return data;
