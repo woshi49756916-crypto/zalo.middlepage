@@ -5,7 +5,127 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="zalo-platform-site-verification" content="ITkmAutGOI48yj4rq_jw0L7ky1ozc2TBCpKu" />
     <title>Zalo授权登录</title>
-    <link rel="stylesheet" href="styles.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+                'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+                sans-serif;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 400px;
+        }
+
+        .auth-card {
+            background: white;
+            border-radius: 16px;
+            padding: 40px 30px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+            text-align: center;
+        }
+
+        .logo {
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: center;
+        }
+
+        .logo svg {
+            filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.1));
+        }
+
+        h1 {
+            color: #333;
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 30px;
+        }
+
+        .status {
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 20px;
+            font-size: 14px;
+            line-height: 1.5;
+            min-height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .status-info {
+            background-color: #e3f2fd;
+            color: #1976d2;
+            border: 1px solid #90caf9;
+        }
+
+        .status-success {
+            background-color: #e8f5e9;
+            color: #388e3c;
+            border: 1px solid #81c784;
+        }
+
+        .status-error {
+            background-color: #ffebee;
+            color: #c62828;
+            border: 1px solid #ef5350;
+        }
+
+        .loading {
+            margin-top: 30px;
+        }
+
+        .loading.hidden {
+            display: none;
+        }
+
+        .loading p {
+            margin-top: 15px;
+            color: #666;
+            font-size: 14px;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #0068FF;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* 响应式设计 */
+        @media (max-width: 480px) {
+            .auth-card {
+                padding: 30px 20px;
+            }
+
+            h1 {
+                font-size: 20px;
+            }
+        }
+    </style>
 </head>
 <body>
     <div class="container">
@@ -24,7 +144,598 @@
             </div>
         </div>
     </div>
-    <script src="auth.js"></script>
+    <script>
+        /**
+         * Zalo授权登录中间页
+         * 功能：
+         * 1. 处理Zalo OAuth 2.0授权流程
+         * 2. 获取access_token和user_id
+         * 3. 将数据传回Flutter-web项目
+         * 4. 关闭中间页
+         */
+
+        // Zalo OAuth配置 - 优先从URL参数读取，如果没有则使用默认值
+        const ZALO_CONFIG = {
+            // Zalo App ID - 优先从URL参数读取，如果没有则使用默认值
+            appId: getUrlParameter('app_id') || '548583800445969563',
+            // Zalo App Secret - 优先从URL参数读取（如果需要在中间页直接处理，注意安全性）
+            appSecret: getUrlParameter('app_secret') || 'y6kCG08P3t0UQ0S16eJK',
+            // 授权回调地址 - 优先从URL参数读取，如果没有则使用当前页面URL
+            redirectUri: getUrlParameter('redirect_uri') || window.location.origin + window.location.pathname,
+            // Zalo OAuth授权地址
+            authUrl: 'https://oauth.zaloapp.com/v4/permission',
+            // Zalo Token交换地址（注意：需要使用POST方法）
+            tokenUrl: 'https://oauth.zaloapp.com/v4/access_token',
+            // Zalo用户信息获取地址
+            userInfoUrl: 'https://graph.zalo.me/v2.0/me',
+            // Flutter回调标识（通过URL参数传递）
+            callbackScheme: getUrlParameter('callback_scheme') || 'flutterapp',
+            // 是否使用postMessage方式（默认使用）
+            usePostMessage: getUrlParameter('use_postmessage') !== 'false'
+        };
+
+        // 获取URL参数
+        function getUrlParameter(name) {
+            const urlParams = new URLSearchParams(window.location.search);
+            return urlParams.get(name);
+        }
+
+        // 显示状态信息
+        function showStatus(message, type = 'info') {
+            const statusEl = document.getElementById('status');
+            const loadingEl = document.getElementById('loading');
+            
+            statusEl.textContent = message;
+            statusEl.className = `status status-${type}`;
+            loadingEl.classList.remove('hidden');
+            
+            if (type === 'error' || type === 'success') {
+                loadingEl.classList.add('hidden');
+            }
+        }
+
+        // 生成随机字符串（用于state参数）
+        function generateRandomString(length = 16) {
+            const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+            let result = '';
+            for (let i = 0; i < length; i++) {
+                result += chars.charAt(Math.floor(Math.random() * chars.length));
+            }
+            return result;
+        }
+
+        // 存储state到sessionStorage
+        function saveState(state) {
+            sessionStorage.setItem('zalo_oauth_state', state);
+        }
+
+        // 验证state
+        function verifyState(state) {
+            const savedState = sessionStorage.getItem('zalo_oauth_state');
+            sessionStorage.removeItem('zalo_oauth_state');
+            return savedState === state;
+        }
+
+        // 跳转到Zalo授权页面
+        function redirectToZaloAuth() {
+            try {
+                if (!ZALO_CONFIG.appId) {
+                    const errorMsg = '错误：缺少Zalo App ID配置';
+                    showStatus(errorMsg, 'error');
+                    setTimeout(() => {
+                        sendResultToFlutter({ error: errorMsg }, true);
+                    }, 2000);
+                    return;
+                }
+
+                if (!ZALO_CONFIG.redirectUri) {
+                    const errorMsg = '错误：缺少授权回调地址配置';
+                    showStatus(errorMsg, 'error');
+                    setTimeout(() => {
+                        sendResultToFlutter({ error: errorMsg }, true);
+                    }, 2000);
+                    return;
+                }
+
+                const state = generateRandomString();
+                saveState(state);
+
+                // 构建Zalo授权URL
+                const authParams = new URLSearchParams({
+                    app_id: ZALO_CONFIG.appId,
+                    redirect_uri: ZALO_CONFIG.redirectUri,
+                    state: state,
+                    // Zalo需要的权限范围
+                    scope: 'id,name,birthday,gender,picture'
+                });
+
+                const authUrl = `${ZALO_CONFIG.authUrl}?${authParams.toString()}`;
+                
+                showStatus('正在跳转到Zalo授权页面...', 'info');
+                window.location.href = authUrl;
+            } catch (error) {
+                console.error('跳转授权页面失败：', error);
+                const errorMsg = `跳转授权页面失败：${error.message || error}`;
+                showStatus(errorMsg, 'error');
+                setTimeout(() => {
+                    sendResultToFlutter({ error: errorMsg }, true);
+                }, 2000);
+            }
+        }
+
+        // 处理授权回调（从Zalo返回）
+        async function handleAuthCallback() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const code = urlParams.get('code');
+            const state = urlParams.get('state');
+            const error = urlParams.get('error');
+
+            // 检查是否有错误
+            if (error) {
+                showStatus(`授权失败：${error}`, 'error');
+                setTimeout(() => {
+                    sendResultToFlutter({ error: error }, true);
+                }, 2000);
+                return;
+            }
+
+            // 验证state
+            if (!state || !verifyState(state)) {
+                showStatus('授权验证失败：state不匹配', 'error');
+                setTimeout(() => {
+                    sendResultToFlutter({ error: 'state_verification_failed' }, true);
+                }, 2000);
+                return;
+            }
+
+            // 检查是否有授权码
+            if (!code) {
+                // 没有code，说明是首次访问，跳转到授权页面
+                redirectToZaloAuth();
+                return;
+            }
+
+            // 有code，交换access_token
+            try {
+                showStatus('正在获取访问令牌...', 'info');
+                const tokenData = await exchangeCodeForToken(code);
+                
+                if (!tokenData || !tokenData.access_token) {
+                    const errorMsg = tokenData?.error_description || tokenData?.error || '无法获取access_token';
+                    throw new Error(errorMsg);
+                }
+
+                showStatus('正在获取用户信息...', 'info');
+                const userInfo = await getUserInfo(tokenData.access_token);
+                
+                if (!userInfo || !userInfo.id) {
+                    const errorMsg = userInfo?.message || userInfo?.error || '无法获取用户信息';
+                    throw new Error(errorMsg);
+                }
+
+                // 准备返回数据
+                const result = {
+                    access_token: tokenData.access_token,
+                    user_id: userInfo.id.toString(),
+                    expires_in: tokenData.expires_in,
+                    refresh_token: tokenData.refresh_token || null,
+                    user_info: {
+                        id: userInfo.id,
+                        name: userInfo.name,
+                        birthday: userInfo.birthday || null,
+                        gender: userInfo.gender || null,
+                        picture: userInfo.picture?.data?.url || null
+                    }
+                };
+
+                showStatus('授权成功！正在返回...', 'success');
+                
+                // 延迟一下让用户看到成功提示
+                setTimeout(() => {
+                    sendResultToFlutter(result, false);
+                }, 1000);
+
+            } catch (error) {
+                console.error('授权流程错误：', error);
+                const errorMsg = error.message || error.toString() || '未知错误';
+                showStatus(`授权失败：${errorMsg}`, 'error');
+                setTimeout(() => {
+                    sendResultToFlutter({ 
+                        error: errorMsg,
+                        error_code: error.code || error.error || null,
+                        error_details: error.error_description || null
+                    }, true);
+                }, 2000);
+            }
+        }
+
+        // 使用授权码交换access_token
+        async function exchangeCodeForToken(code) {
+            // 使用app_secret直接在前端调用Zalo API交换token
+            // 注意：在生产环境中，app_secret通过URL传递存在安全风险，请谨慎使用
+            
+            if (!ZALO_CONFIG.appSecret) {
+                throw new Error('缺少app_secret配置，无法进行token交换');
+            }
+            
+            // Zalo API需要使用POST方法
+            // 重要：secret_key必须作为HTTP Header传递，而不是在请求体中
+            // 注意：redirect_uri必须与授权请求时使用的完全一致
+            const tokenParams = new URLSearchParams({
+                app_id: ZALO_CONFIG.appId,
+                code: code,
+                grant_type: 'authorization_code'
+                // redirect_uri: ZALO_CONFIG.redirectUri,  // 如果需要，取消注释
+                // code_verifier: 'your_code_verifier'  // 可选，用于PKCE流程
+            });
+
+            // 调试信息
+            console.log('Token交换请求参数:', {
+                url: ZALO_CONFIG.tokenUrl,
+                app_id: ZALO_CONFIG.appId,
+                code: code ? code.substring(0, 20) + '...' : '缺失',
+                redirect_uri: ZALO_CONFIG.redirectUri,
+                has_secret_key: !!ZALO_CONFIG.appSecret
+            });
+
+            const response = await fetch(ZALO_CONFIG.tokenUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'secret_key': ZALO_CONFIG.appSecret  // secret_key作为HTTP Header
+                },
+                body: tokenParams.toString()
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error('Token交换HTTP错误:', {
+                    status: response.status,
+                    statusText: response.statusText,
+                    error: errorText
+                });
+                throw new Error(`Token交换失败：${response.status} ${response.statusText} - ${errorText}`);
+            }
+
+            const data = await response.json();
+            
+            if (data.error) {
+                console.error('Zalo API返回错误:', data);
+                
+                // 特殊处理 -14005 错误（授权码无效）
+                if (data.error === -14005 || data.error === '-14005') {
+                    throw new Error('授权码无效或已过期，请重新进行授权。可能原因：1)授权码已使用 2)授权码已过期 3)redirect_uri不匹配');
+                }
+                
+                throw new Error(data.error_description || data.error || 'Token交换失败');
+            }
+
+            console.log('Token交换成功');
+            return data;
+        }
+
+        // 获取用户信息
+        async function getUserInfo(accessToken) {
+            // 根据Zalo API建议，access_token应该放在HTTP Header中，而不是URL参数
+            // 使用两种方式以确保兼容性：Header优先，URL参数作为备用
+            const fields = 'id,name,birthday,gender,picture';
+            
+            // 方案1：将access_token放在Header中（推荐）
+            const response = await fetch(`${ZALO_CONFIG.userInfoUrl}?fields=${fields}`, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'access_token': accessToken  // 将access_token放在Header中
+                    // 或者使用标准OAuth格式：'Authorization': `Bearer ${accessToken}`
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error(`获取用户信息失败：${response.statusText}`);
+            }
+
+            const data = await response.json();
+            
+            // 检查是否有错误（error: 0表示成功，但可能包含警告消息）
+            if (data.error && data.error !== 0) {
+                throw new Error(data.message || data.error_description || '获取用户信息失败');
+            }
+
+            // 如果返回了警告消息，记录但不中断流程
+            if (data.message && data.message.includes('Warning')) {
+                console.warn('Zalo API警告:', data.message);
+            }
+
+            return data;
+        }
+
+        // 将结果发送给Flutter-web项目
+        function sendResultToFlutter(result, isError) {
+            if (ZALO_CONFIG.usePostMessage && window.opener) {
+                // 方案1：使用postMessage（推荐，适用于window.open打开的窗口）
+                try {
+                    window.opener.postMessage({
+                        type: 'zalo_auth_result',
+                        success: !isError,
+                        data: result,
+                        timestamp: Date.now()
+                    }, '*'); // 注意：生产环境应该指定具体的origin
+                    
+                    console.log('授权结果已发送给Flutter', isError ? '(失败)' : '(成功)');
+                    
+                    // 延迟关闭窗口，确保消息已发送
+                    setTimeout(() => {
+                        try {
+                            window.close();
+                        } catch (closeErr) {
+                            console.warn('无法关闭窗口:', closeErr);
+                        }
+                    }, 500);
+                } catch (error) {
+                    console.error('postMessage失败，尝试使用URL方案：', error);
+                    fallbackToUrlScheme(result, isError);
+                }
+            } else {
+                // 方案2：使用自定义URL Scheme（适用于WebView）
+                fallbackToUrlScheme(result, isError);
+            }
+        }
+
+        // 使用URL Scheme方案
+        function fallbackToUrlScheme(result, isError) {
+            try {
+                const params = new URLSearchParams();
+                
+                if (isError) {
+                    params.append('error', result.error || 'unknown_error');
+                    if (result.error_code) {
+                        params.append('error_code', result.error_code);
+                    }
+                    if (result.error_details) {
+                        params.append('error_details', result.error_details);
+                    }
+                } else {
+                    params.append('access_token', result.access_token);
+                    params.append('user_id', result.user_id);
+                    if (result.expires_in) {
+                        params.append('expires_in', result.expires_in);
+                    }
+                }
+
+                const callbackUrl = `${ZALO_CONFIG.callbackScheme}://zalo_auth_callback?${params.toString()}`;
+                
+                // 尝试跳转到自定义scheme
+                window.location.href = callbackUrl;
+                
+                // 延迟关闭窗口，确保URL Scheme已处理
+                setTimeout(() => {
+                    try {
+                        window.close();
+                    } catch (closeErr) {
+                        console.warn('无法关闭窗口:', closeErr);
+                    }
+                }, 1000);
+                
+            } catch (error) {
+                console.error('URL Scheme方案失败：', error);
+                // 如果URL Scheme失败，尝试直接关闭窗口
+                setTimeout(() => {
+                    try {
+                        window.close();
+                    } catch (closeErr) {
+                        console.warn('无法关闭窗口:', closeErr);
+                    }
+                }, 500);
+            }
+        }
+
+        // 页面加载完成后执行
+        document.addEventListener('DOMContentLoaded', () => {
+            try {
+                // 检查是否是授权回调
+                const urlParams = new URLSearchParams(window.location.search);
+                const code = urlParams.get('code');
+                const state = urlParams.get('state');
+                const error = urlParams.get('error') || urlParams.get('error_code');
+
+                if (code || error) {
+                    // 有code或error，说明是Zalo回调
+                    console.log('Zalo回调参数:', { code: code ? '已接收' : '无', state: state || '无', error: error || '无' });
+                    
+                    // 如果有父窗口（可能是Flutter应用），尝试通过postMessage发送回调信息
+                    // 这样即使父窗口是Flutter，也能收到回调信息
+                    if (window.opener && !window.opener.closed) {
+                        console.log('检测到父窗口，发送postMessage通知');
+                        try {
+                            window.opener.postMessage({
+                                type: 'zalo_auth_callback',
+                                url: window.location.href,
+                                code: code,
+                                state: state,
+                                error: error,
+                                timestamp: Date.now()
+                            }, '*');
+                            console.log('postMessage已发送');
+                        } catch (postErr) {
+                            console.warn('postMessage发送失败:', postErr);
+                        }
+                    }
+                    
+                    // 处理授权回调
+                    handleAuthCallback();
+                } else {
+                    // 首次访问，跳转到授权页面
+                    redirectToZaloAuth();
+                }
+            } catch (error) {
+                console.error('页面初始化错误：', error);
+                const errorMsg = error.message || error.toString() || '页面初始化失败';
+                showStatus(errorMsg, 'error');
+                setTimeout(() => {
+                    sendResultToFlutter({ 
+                        error: errorMsg,
+                        error_code: 'initialization_error'
+                    }, true);
+                }, 2000);
+            }
+        });
+
+        // 全局错误处理（捕获未处理的错误）
+        window.addEventListener('error', (event) => {
+            console.error('全局错误捕获：', event.error);
+            if (event.error && typeof sendResultToFlutter === 'function') {
+                const errorMsg = event.error.message || event.message || '发生未知错误';
+                showStatus(`错误：${errorMsg}`, 'error');
+                setTimeout(() => {
+                    sendResultToFlutter({ 
+                        error: errorMsg,
+                        error_code: 'unhandled_error'
+                    }, true);
+                }, 2000);
+            }
+        });
+
+        // 捕获未处理的Promise拒绝
+        window.addEventListener('unhandledrejection', (event) => {
+            console.error('未处理的Promise拒绝：', event.reason);
+            if (event.reason && typeof sendResultToFlutter === 'function') {
+                const errorMsg = event.reason?.message || event.reason?.toString() || 'Promise处理失败';
+                showStatus(`错误：${errorMsg}`, 'error');
+                setTimeout(() => {
+                    sendResultToFlutter({ 
+                        error: errorMsg,
+                        error_code: 'unhandled_promise_rejection'
+                    }, true);
+                }, 2000);
+            }
+        });
+
+        // 监听来自Flutter的消息（可选，用于确认消息接收）
+        window.addEventListener('message', (event) => {
+            // 处理来自zalo-redirct.html的回调消息
+            if (event.data && event.data.type === 'zalo_auth_callback') {
+                try {
+                    let code, state, error;
+                    
+                    // 优先使用直接传递的参数（更高效）
+                    if (event.data.code !== undefined || event.data.error !== undefined) {
+                        code = event.data.code;
+                        state = event.data.state;
+                        error = event.data.error;
+                    } 
+                    // 备用方案：从URL中解析参数
+                    else if (event.data.url) {
+                        const callbackUrl = new URL(event.data.url);
+                        code = callbackUrl.searchParams.get('code');
+                        state = callbackUrl.searchParams.get('state');
+                        error = callbackUrl.searchParams.get('error') || callbackUrl.searchParams.get('error_code');
+                    }
+                    
+                    // 如果有错误，显示错误信息
+                    if (error) {
+                        console.error('Zalo授权错误:', error);
+                        const errorMsg = error || '授权失败';
+                        showStatus(`授权失败：${errorMsg}`, 'error');
+                        setTimeout(() => {
+                            sendResultToFlutter({ 
+                                error: errorMsg,
+                                error_code: 'zalo_auth_error'
+                            }, true);
+                        }, 2000);
+                        return;
+                    }
+                    
+                    // 如果有授权码，处理授权回调
+                    if (code) {
+                        console.log('收到Zalo授权码，开始处理...');
+                        handleAuthCallbackWithCode(code, state);
+                    } else {
+                        console.warn('收到回调消息但缺少授权码');
+                    }
+                } catch (err) {
+                    console.error('处理Zalo回调消息失败:', err);
+                    const errorMsg = err.message || err.toString() || '处理回调消息时发生错误';
+                    showStatus(errorMsg, 'error');
+                    setTimeout(() => {
+                        sendResultToFlutter({ 
+                            error: errorMsg,
+                            error_code: 'callback_processing_error'
+                        }, true);
+                    }, 2000);
+                }
+            }
+            
+            // 处理来自Flutter的确认消息
+            if (event.data && event.data.type === 'zalo_auth_confirm') {
+                console.log('Flutter已确认接收到授权结果');
+                // window.close();
+            }
+        });
+
+        // 使用授权码处理回调（从zalo-redirct.html接收）
+        async function handleAuthCallbackWithCode(code, state) {
+            // 验证state
+            if (!state || !verifyState(state)) {
+                showStatus('授权验证失败：state不匹配', 'error');
+                setTimeout(() => {
+                    sendResultToFlutter({ error: 'state_verification_failed' }, true);
+                }, 2000);
+                return;
+            }
+
+            // 交换access_token
+            try {
+                showStatus('正在获取访问令牌...', 'info');
+                const tokenData = await exchangeCodeForToken(code);
+                
+                if (!tokenData || !tokenData.access_token) {
+                    const errorMsg = tokenData?.error_description || tokenData?.error || '无法获取access_token';
+                    throw new Error(errorMsg);
+                }
+
+                showStatus('正在获取用户信息...', 'info');
+                const userInfo = await getUserInfo(tokenData.access_token);
+                
+                if (!userInfo || !userInfo.id) {
+                    const errorMsg = userInfo?.message || userInfo?.error || '无法获取用户信息';
+                    throw new Error(errorMsg);
+                }
+
+                // 准备返回数据
+                const result = {
+                    access_token: tokenData.access_token,
+                    user_id: userInfo.id.toString(),
+                    expires_in: tokenData.expires_in,
+                    refresh_token: tokenData.refresh_token || null,
+                    user_info: {
+                        id: userInfo.id,
+                        name: userInfo.name,
+                        birthday: userInfo.birthday || null,
+                        gender: userInfo.gender || null,
+                        picture: userInfo.picture?.data?.url || null
+                    }
+                };
+
+                showStatus('授权成功！正在返回...', 'success');
+                
+                // 延迟一下让用户看到成功提示
+                setTimeout(() => {
+                    sendResultToFlutter(result, false);
+                }, 1000);
+
+            } catch (error) {
+                console.error('授权流程错误：', error);
+                const errorMsg = error.message || error.toString() || '未知错误';
+                showStatus(`授权失败：${errorMsg}`, 'error');
+                setTimeout(() => {
+                    sendResultToFlutter({ 
+                        error: errorMsg,
+                        error_code: error.code || error.error || null,
+                        error_details: error.error_description || null
+                    }, true);
+                }, 2000);
+            }
+        }
+    </script>
 </body>
 </html>
-
