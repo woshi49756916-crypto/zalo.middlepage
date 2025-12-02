@@ -80,9 +80,19 @@
       }
 
       let googleTokenClient;
+      let bootstrapAttempts = 0;
 
-      window.addEventListener("load", () => {
-        if (!clientId || !window.google || !google.accounts) {
+      const bootstrapGoogleClient = () => {
+        if (!clientId) {
+          log("缺少 clientId，无法初始化 Google 登录");
+          return;
+        }
+        if (!window.google || !google.accounts || !google.accounts.oauth2) {
+          bootstrapAttempts += 1;
+          if (bootstrapAttempts % 5 === 0) {
+            log("Google SDK 尚未加载，稍后自动重试...");
+          }
+          window.requestAnimationFrame(bootstrapGoogleClient);
           return;
         }
 
@@ -96,11 +106,14 @@
         });
 
         log("Google Token Client 初始化成功，等待用户点击登录按钮");
-      });
+      };
+
+      window.addEventListener("load", bootstrapGoogleClient);
 
       document.getElementById("loginBtn").addEventListener("click", () => {
         if (!googleTokenClient) {
-          log("Google Token Client 未就绪");
+          log("Google Token Client 未就绪，正在重试初始化...");
+          bootstrapGoogleClient();
           return;
         }
         googleTokenClient.requestAccessToken();
