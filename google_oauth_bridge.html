@@ -116,15 +116,34 @@
 
       function postToHost(payload) {
         const serialized = JSON.stringify(payload);
+        
+        // 如果是在 WebView 中（App 内嵌），使用 postMessage
         if (window.ReactNativeWebView?.postMessage) {
           window.ReactNativeWebView.postMessage(serialized);
+          return;
         }
         if (window.AppBridge?.postMessage) {
           window.AppBridge.postMessage(serialized);
+          return;
         }
         if (window.parent && window.parent !== window) {
           window.parent.postMessage(payload, "*");
+          return;
         }
+
+        // 如果是在系统浏览器中，通过 URL 跳转回 App
+        const redirectUri = urlParams.get("redirect_uri");
+        if (redirectUri) {
+          // 将数据编码到 URL 参数中
+          const encodedData = encodeURIComponent(serialized);
+          const callbackUrl = redirectUri + (redirectUri.includes("?") ? "&" : "?") + "data=" + encodedData;
+          
+          // 跳转回 App（通过 Universal Links 或自定义 Scheme）
+          window.location.href = callbackUrl;
+          return;
+        }
+
+        // 调试模式：显示数据
         if (debug) {
           debugBox.hidden = false;
           resultBox.textContent = serialized;
